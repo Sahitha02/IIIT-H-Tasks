@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify
 import time
+from app import db
 from .models import User, Post
 from flask import request
 from .pagination import paginate_list
@@ -34,7 +35,7 @@ def logbook():
         total += (i % 10)
     time.sleep(0.1)
     return jsonify({"total": total})
-
+#task-4
 @dash.route("/annotator_dashboard_paginated")
 def annotator_dashboard_paginated():
     page = request.args.get("page", 1)
@@ -97,3 +98,38 @@ def validator_dashboard_paginated():
     result = paginate_list(logs, page, limit)
 
     return jsonify(result)
+
+# task - 5
+@dash.route("/dashboard_summary")
+def dashboard_summary():
+    # Optimized aggregated JOIN query
+    results = (
+        db.session.query(
+            User.id,
+            User.name,
+            db.func.count(Post.id).label("post_count")
+        )
+        .outerjoin(Post, User.id == Post.user_id)
+        .group_by(User.id)
+        .order_by(User.id)
+        .all()
+    )
+
+    # Convert result rows to dict format
+    posts_per_user = [
+        {
+            "user_id": row[0],
+            "user_name": row[1],
+            "post_count": row[2]
+        }
+        for row in results
+    ]
+
+    total_users = db.session.query(db.func.count(User.id)).scalar()
+    total_posts = db.session.query(db.func.count(Post.id)).scalar()
+
+    return {
+        "total_users": total_users,
+        "total_posts": total_posts,
+        "posts_per_user": posts_per_user
+    }
