@@ -1,12 +1,13 @@
 from flask import Blueprint, jsonify
 import time
 from app import db
-from .models import User, Post
+from .models import User, Post, Segment, SegmentContext
 from flask import request
 from .pagination import paginate_list
 from .pagination import paginate_query
 from redis import Redis
 from worker.log_worker import log_action
+from sqlalchemy.orm import selectinload
 
 
 dash = Blueprint("dash", __name__)
@@ -140,4 +141,47 @@ def dashboard_summary():
         "total_users": total_users,
         "total_posts": total_posts,
         "posts_per_user": posts_per_user
+    }
+# task-7
+@dash.route("/segment_context/<int:segment_id>")
+def segment_context(segment_id):
+    segment = Segment.query.get(segment_id)
+    if not segment:
+        return {"error": "Segment not found"}, 404
+
+    context_list = []
+    # This loop causes N+1 queries
+    for ctx in segment.contexts:
+        context_list.append({
+            "id": ctx.id,
+            "text": ctx.text
+        })
+
+    return {
+        "segment_id": segment.id,
+        "segment_name": segment.name,
+        "contexts": context_list
+    }
+
+@dash.route("/segment_context_optimized/<int:segment_id>")
+def segment_context_optimized(segment_id):
+    segment = (
+        Segment.query
+        .options(selectinload(Segment.contexts))
+        .filter_by(id=segment_id)
+        .first()
+    )
+
+    if not segment:
+        return {"error": "Segment not found"}, 404
+
+    context_list = [
+        {"id": ctx.id, "text": ctx.text}
+        for ctx in segment.contexts
+    ]
+
+    return {
+        "segment_id": segment.id,
+        "segment_name": segment.name,
+        "contexts": context_list
     }
