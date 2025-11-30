@@ -5,6 +5,9 @@ from .models import User, Post
 from flask import request
 from .pagination import paginate_list
 from .pagination import paginate_query
+from redis import Redis
+from worker.log_worker import log_action
+
 
 dash = Blueprint("dash", __name__)
 
@@ -23,8 +26,13 @@ def annotator_dashboard():
 def reviewer_dashboard():
     users = User.query.all()
     posts = Post.query.all()
+    log_action.send(1, "opened reviewer dashboard")
     time.sleep(0.2)  # simulate wait
-    return jsonify({"users": len(users), "posts": len(posts)})
+    return jsonify({
+        "message": "Reviewer dashboard open",
+        "users": len(users),
+        "posts": len(posts) 
+        })
 
 
 # Simulate logbook (slow: logging + computation)

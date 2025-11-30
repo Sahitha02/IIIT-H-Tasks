@@ -5,7 +5,7 @@ from .profiler_cprofile import profile_bp
 
 def create_app():
     app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:487755@localhost:5433/tasks'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ECHO'] = True  # IMPORTANT: Shows SQL logs
 

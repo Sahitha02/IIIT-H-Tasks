@@ -1,6 +1,5 @@
 from flask import Blueprint, jsonify
 from .models import User
-from .profiler import profile_endpoint
 from sqlalchemy.orm import selectinload
 
 main = Blueprint("main", __name__)
@@ -40,17 +39,7 @@ def get_users_optimized():
         })
 
     return jsonify(data)
-@main.route("/users_optimized_profiled")
-@profile_endpoint
-def get_users_optimized_profiled():
-    users = User.query.options(selectinload(User.posts)).all()
 
-    data = []
-    for u in users:
-        posts = [{"id": p.id, "title": p.title} for p in u.posts]
-        data.append({"id": u.id, "name": u.name, "posts": posts})
-
-    return jsonify(data)
 
 
 
