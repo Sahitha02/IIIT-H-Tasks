@@ -1,42 +1,67 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request, current_app
 import time
-from app import db
-from .models import User, Post, Segment, SegmentContext
-from flask import request
-from .pagination import paginate_list
-from .pagination import paginate_query
-from redis import Redis
-from worker.log_worker import log_action
+import json
 from sqlalchemy.orm import selectinload
-
+from app.db import db
+from .models import User, Post, Segment, SegmentContext
+from .pagination import paginate_list, paginate_query
+from worker.log_worker import log_action
 
 dash = Blueprint("dash", __name__)
 
-# Simulate annotator dashboard (slow: heavy loop)
+# TASK-8: Annotator Dashboard (with Redis Caching)
 @dash.route("/annotator_dashboard")
 def annotator_dashboard():
-    data = []
-    for i in range(20000):   # simulate heavy processing
-        x = i * i
-        data.append(x)
-    return jsonify({"message": "Annotator dashboard loaded", "count": len(data)})
+    redis_client = current_app.redis
+    cache_key = "annotator_dashboard_cache"
+
+    # 1) Try cache
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # 2) Heavy computation (simulate slow dashboard)
+    data = [i * i for i in range(20000)]
+
+    response = {
+        "message": "Annotator dashboard loaded",
+        "count": len(data)
+    }
+
+    # 3) Cache for 30 seconds
+    redis_client.setex(cache_key, 30, json.dumps(response))
+
+    return response
 
 
-# Simulate reviewer dashboard (slow: multiple DB reads)
+# TASK-8: Reviewer Dashboard (with Redis Caching)
 @dash.route("/reviewer_dashboard")
 def reviewer_dashboard():
+    redis_client = current_app.redis
+    cache_key = "reviewer_dashboard_cache"
+
+    # 1) Try cache
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        return json.loads(cached_data)
+
+    # 2) Query from DB
     users = User.query.all()
     posts = Post.query.all()
-    log_action.send(1, "opened reviewer dashboard")
-    time.sleep(0.2)  # simulate wait
-    return jsonify({
+
+    response = {
         "message": "Reviewer dashboard open",
         "users": len(users),
-        "posts": len(posts) 
-        })
+        "posts": len(posts)
+    }
+
+    # 3) Store in cache for 30 seconds
+    redis_client.setex(cache_key, 30, json.dumps(response))
+
+    return response
 
 
-# Simulate logbook (slow: logging + computation)
+# Logbook Simulation (slow)
 @dash.route("/logbook")
 def logbook():
     total = 0
@@ -44,7 +69,9 @@ def logbook():
         total += (i % 10)
     time.sleep(0.1)
     return jsonify({"total": total})
-#task-4
+
+
+# TASK-4: Pagination (Annotator)
 @dash.route("/annotator_dashboard_paginated")
 def annotator_dashboard_paginated():
     page = request.args.get("page", 1)
@@ -54,24 +81,23 @@ def annotator_dashboard_paginated():
     data = [i * i for i in range(20000)]
 
     result = paginate_list(data, page, limit)
-
-    # convert into API-safe format
-    result["data"] = list(result["data"])
+    result["data"] = list(result["data"])  # make API safe
 
     return jsonify(result)
+
+
+# TASK-4: Pagination (Reviewer)
 @dash.route("/reviewer_dashboard_paginated")
 def reviewer_dashboard_paginated():
     page = request.args.get("page", 1)
     limit = request.args.get("limit", 10)
 
-    # Query with pagination
     users_query = User.query
     posts_query = Post.query
 
     users_result = paginate_query(users_query, page, limit)
     posts_result = paginate_query(posts_query, page, limit)
 
-    # Convert SQLAlchemy models to dict
     users_data = [{"id": u.id, "name": u.name} for u in users_result["data"]]
     posts_data = [{"id": p.id, "title": p.title, "user_id": p.user_id} for p in posts_result["data"]]
 
@@ -91,13 +117,45 @@ def reviewer_dashboard_paginated():
             "data": posts_data
         }
     })
+# -----------------------------------------------------------
+# TASK-8: Validator Dashboard (with Redis Caching)
+# -----------------------------------------------------------
+@dash.route("/validator_dashboard")
+def validator_dashboard():
+    redis_client = current_app.redis
+    cache_key = "validator_dashboard_cache"
 
+    # 1) Try cache
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # 2) Simulate heavy validator logic
+    logs = [{
+        "log_id": i,
+        "status": "valid" if i % 2 == 0 else "invalid",
+        "user_id": i % 10
+    } for i in range(50000)]
+
+    valid_count = sum(1 for log in logs if log["status"] == "valid")
+
+    response = {
+        "message": "Validator dashboard loaded",
+        "total_logs": len(logs),
+        "valid_logs": valid_count
+    }
+
+    # 3) Cache result for 30 seconds
+    redis_client.setex(cache_key, 30, json.dumps(response))
+
+    return response
+
+# TASK-4: Validator dashboard paginated
 @dash.route("/validator_dashboard_paginated")
 def validator_dashboard_paginated():
     page = request.args.get("page", 1)
     limit = request.args.get("limit", 50)
 
-    # Large simulated log list
     logs = [{
         "log_id": i,
         "status": "valid" if i % 2 == 0 else "invalid",
@@ -105,13 +163,12 @@ def validator_dashboard_paginated():
     } for i in range(50000)]
 
     result = paginate_list(logs, page, limit)
-
     return jsonify(result)
 
-# task - 5
+
+# TASK-5: Aggregated Dashboard Summary
 @dash.route("/dashboard_summary")
 def dashboard_summary():
-    # Optimized aggregated JOIN query
     results = (
         db.session.query(
             User.id,
@@ -124,7 +181,6 @@ def dashboard_summary():
         .all()
     )
 
-    # Convert result rows to dict format
     posts_per_user = [
         {
             "user_id": row[0],
@@ -142,20 +198,19 @@ def dashboard_summary():
         "total_posts": total_posts,
         "posts_per_user": posts_per_user
     }
-# task-7
+
+
+# TASK-7: Segment Context (slow)
 @dash.route("/segment_context/<int:segment_id>")
 def segment_context(segment_id):
     segment = Segment.query.get(segment_id)
     if not segment:
         return {"error": "Segment not found"}, 404
 
-    context_list = []
-    # This loop causes N+1 queries
-    for ctx in segment.contexts:
-        context_list.append({
-            "id": ctx.id,
-            "text": ctx.text
-        })
+    context_list = [{
+        "id": ctx.id,
+        "text": ctx.text
+    } for ctx in segment.contexts]
 
     return {
         "segment_id": segment.id,
@@ -163,6 +218,8 @@ def segment_context(segment_id):
         "contexts": context_list
     }
 
+
+# task-7: Segment Context optimized
 @dash.route("/segment_context_optimized/<int:segment_id>")
 def segment_context_optimized(segment_id):
     segment = (
@@ -185,3 +242,4 @@ def segment_context_optimized(segment_id):
         "segment_name": segment.name,
         "contexts": context_list
     }
+

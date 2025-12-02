@@ -2,6 +2,7 @@ from flask import Flask
 from .db import db
 from .dashboards import dash
 from .profiler_cprofile import profile_bp
+from redis import Redis
 
 def create_app():
     app = Flask(__name__)
@@ -19,6 +20,8 @@ def create_app():
     app.register_blueprint(main)
     app.register_blueprint(dash)
     app.register_blueprint(profile_bp)
+    # Redis connection for caching
+    app.redis = Redis(host="localhost", port=6379, db=0, decode_responses=True)
 
 
 
