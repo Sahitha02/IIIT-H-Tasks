@@ -243,3 +243,49 @@ def segment_context_optimized(segment_id):
         "contexts": context_list
     }
 
+# -----------------------------------------------------------
+# TASK-9: Segment Context (Redis Cached)
+# -----------------------------------------------------------
+@dash.route("/segment_context_cached/<int:segment_id>")
+def segment_context_cached(segment_id):
+    redis_client = current_app.redis
+    cache_key = f"segment_context_{segment_id}"
+
+    # 1) Try to get cached value
+    cached = redis_client.get(cache_key)
+    if cached:
+        return json.loads(cached)
+
+    # 2) If not cached, fetch from DB using optimized preload
+    segment = (
+        Segment.query
+        .options(selectinload(Segment.contexts))
+        .filter_by(id=segment_id)
+        .first()
+    )
+
+    if not segment:
+        return {"error": "Segment not found"}, 404
+
+    contexts = [
+        {"id": ctx.id, "text": ctx.text}
+        for ctx in segment.contexts
+    ]
+
+    usr_details = {
+        "usr_id": segment.id * 10,
+        "speaker": f"Speaker_{segment.id}",
+        "role": "annotator" if segment.id % 2 == 0 else "reviewer"
+    }
+
+    response = {
+        "segment_id": segment.id,
+        "segment_name": segment.name,
+        "contexts": contexts,
+        "usr": usr_details
+    }
+
+    # 3) Cache for 60 seconds
+    redis_client.setex(cache_key, 60, json.dumps(response))
+
+    return response
