@@ -5,6 +5,7 @@ from .models import User, Post
 from flask import request
 from .pagination import paginate_list
 from .pagination import paginate_query
+from worker.log_worker import log_action
 
 dash = Blueprint("dash", __name__)
 
@@ -132,4 +133,21 @@ def dashboard_summary():
         "total_users": total_users,
         "total_posts": total_posts,
         "posts_per_user": posts_per_user
+    }
+# -------------------------------
+# TASK-12: Stress Test Logging System
+# -------------------------------
+@dash.route("/stress_log/<int:count>")
+def stress_log(count):
+    start_time = time.time()
+
+    for i in range(count):
+        log_action.send(f"stress_user", f"stress_log_event_{i}")
+
+    duration = time.time() - start_time
+
+    return {
+        "requested_logs": count,
+        "enqueue_time_seconds": round(duration, 4),
+        "message": "Logs pushed to queue — check worker output."
     }
