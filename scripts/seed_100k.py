@@ -21,9 +21,7 @@ def run_seed_100k():
         db.drop_all()
         db.create_all()
 
-        # -------------------------------
-        # 1) Seed Users
-        # -------------------------------
+       
         print("Seeding 10,000 users...")
         users = [User(name=f"User_{i}") for i in range(10000)]
         db.session.bulk_save_objects(users)
@@ -32,9 +30,7 @@ def run_seed_100k():
         # Map user IDs (faster lookups)
         user_ids = [u.id for u in User.query.with_entities(User.id).all()]
 
-        # -------------------------------
-        # 2) Seed Posts
-        # -------------------------------
+      
         print("Seeding 80,000 posts...")
         posts = []
         for i in range(80000):
@@ -51,9 +47,7 @@ def run_seed_100k():
             db.session.bulk_save_objects(posts)
             db.session.commit()
 
-        # -------------------------------
-        # 3) Seed Segments
-        # -------------------------------
+      
         print("Seeding 5,000 segments...")
         segments = [Segment(name=f"Segment_{i}") for i in range(5000)]
         db.session.bulk_save_objects(segments)
@@ -61,9 +55,7 @@ def run_seed_100k():
 
         segment_ids = [s.id for s in Segment.query.with_entities(Segment.id).all()]
 
-        # -------------------------------
-        # 4) Seed Segment Context (10,000 rows)
-        # -------------------------------
+       
         print("Seeding 10,000 segment contexts...")
         contexts = []
         for i in range(10000):
